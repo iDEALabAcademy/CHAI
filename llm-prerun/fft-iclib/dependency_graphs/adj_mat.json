@@ -1,0 +1,50 @@
+{
+  "cexp": {
+    "cexp": 0,
+    "cos": 1,
+    "exp": 1,
+    "fft_radix2": 0,
+    "main": 0,
+    "sin": 1
+  },
+  "cos": {
+    "cexp": 0,
+    "cos": 0,
+    "exp": 0,
+    "fft_radix2": 0,
+    "main": 0,
+    "sin": 0
+  },
+  "exp": {
+    "cexp": 0,
+    "cos": 0,
+    "exp": 0,
+    "fft_radix2": 0,
+    "main": 0,
+    "sin": 0
+  },
+  "fft_radix2": {
+    "cexp": 1,
+    "cos": 0,
+    "exp": 0,
+    "fft_radix2": 1,
+    "main": 0,
+    "sin": 0
+  },
+  "main": {
+    "cexp": 0,
+    "cos": 0,
+    "exp": 0,
+    "fft_radix2": 1,
+    "main": 0,
+    "sin": 0
+  },
+  "sin": {
+    "cexp": 0,
+    "cos": 0,
+    "exp": 0,
+    "fft_radix2": 0,
+    "main": 0,
+    "sin": 0
+  }
+}

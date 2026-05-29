@@ -1,0 +1,393 @@
+Here are examples of approximation techniques beyond loop perforation. Each shows a before (original) and after (approximated) version. If applying any of these techniques, follow the pattern shown.
+
+### Example 1: Early-Exit Approximation (Technique 21) — Binary Search
+
+#### Original function
+
+```c
+int binary_search(int arr[], int size, int target) {
+    int low = 0, high = size - 1;
+    int mid, iterations = 0;
+    while (low <= high) {
+        mid = low + (high - low) / 2;
+        if (arr[mid] == target) return mid;
+        else if (arr[mid] < target) low = mid + 1;
+        else high = mid - 1;
+        iterations++;
+    }
+    return -1;
+}
+```
+
+#### Approximated function
+
+```c
+int binary_search(int arr[], int size, int target) {
+    /*Knob Variables Declaration Start*/
+    int early_exit_enabled = 0;
+    int max_iterations = 20;
+    /*Knob Variables Declaration End*/
+
+    int low = 0, high = size - 1;
+    int mid, iterations = 0;
+    while (low <= high) {
+        mid = low + (high - low) / 2;
+        if (arr[mid] == target) return mid;
+        else if (arr[mid] < target) low = mid + 1;
+        else high = mid - 1;
+        iterations++;
+        if (early_exit_enabled && iterations >= max_iterations) {
+            break;
+        }
+    }
+    return mid;
+}
+```
+
+
+### Example 2: Spatial Downsampling (Technique 22) — Image Convolution
+
+#### Original function
+
+```c
+void convolve(unsigned char *in, unsigned char *out, int width, int height) {
+    int kernel[3][3] = {{-1,0,1},{-2,0,2},{-1,0,1}};
+    for (int y = 1; y < height - 1; y++) {
+        for (int x = 1; x < width - 1; x++) {
+            int sum = 0;
+            for (int ky = -1; ky <= 1; ky++)
+                for (int kx = -1; kx <= 1; kx++)
+                    sum += in[(y+ky)*width + (x+kx)] * kernel[ky+1][kx+1];
+            out[y*width + x] = (sum > 255) ? 255 : ((sum < 0) ? 0 : sum);
+        }
+    }
+}
+```
+
+#### Approximated function
+
+```c
+void convolve(unsigned char *in, unsigned char *out, int width, int height) {
+    /*Knob Variables Declaration Start*/
+    int downsample_factor = 1;
+    /*Knob Variables Declaration End*/
+
+    int kernel[3][3] = {{-1,0,1},{-2,0,2},{-1,0,1}};
+    for (int y = 1; y < height - 1; y += downsample_factor) {
+        for (int x = 1; x < width - 1; x += downsample_factor) {
+            int sum = 0;
+            for (int ky = -1; ky <= 1; ky++)
+                for (int kx = -1; kx <= 1; kx++)
+                    sum += in[(y+ky)*width + (x+kx)] * kernel[ky+1][kx+1];
+            unsigned char val = (sum > 255) ? 255 : ((sum < 0) ? 0 : sum);
+            /* Fill the downsampled block with the computed value */
+            for (int fy = 0; fy < downsample_factor && (y+fy) < height-1; fy++)
+                for (int fx = 0; fx < downsample_factor && (x+fx) < width-1; fx++)
+                    out[(y+fy)*width + (x+fx)] = val;
+        }
+    }
+}
+```
+
+
+### Example 3: Temporal Decimation (Technique 23) — Sensor Signal Processing
+
+#### Original function
+
+```c
+void process_samples(int samples[], int results[], int count) {
+    for (int i = 0; i < count; i++) {
+        int val = samples[i];
+        int processed = (val * val + val) / 2;
+        results[i] = processed;
+    }
+}
+```
+
+#### Approximated function
+
+```c
+void process_samples(int samples[], int results[], int count) {
+    /*Knob Variables Declaration Start*/
+    int decimation_factor = 1;
+    /*Knob Variables Declaration End*/
+
+    int last_result = 0;
+    for (int i = 0; i < count; i++) {
+        if (i % decimation_factor == 0) {
+            int val = samples[i];
+            last_result = (val * val + val) / 2;
+        }
+        results[i] = last_result;
+    }
+}
+```
+
+
+### Example 4: Bit-Shift EWMA (Technique 26) — Link Quality Estimator
+
+#### Original function
+
+```c
+float update_ewma(float ewma, float new_sample, float alpha) {
+    ewma = alpha * new_sample + (1.0f - alpha) * ewma;
+    return ewma;
+}
+```
+
+#### Approximated function
+
+```c
+float update_ewma(float ewma, float new_sample, float alpha) {
+    /*Knob Variables Declaration Start*/
+    int shift_factor = 0;
+    /*Knob Variables Declaration End*/
+
+    if (shift_factor == 0) {
+        /* Baseline: exact floating-point EWMA */
+        ewma = alpha * new_sample + (1.0f - alpha) * ewma;
+    } else {
+        /* Approximate: integer bit-shift EWMA, alpha ~ 1/(2^shift_factor) */
+        int iewma = (int)ewma;
+        int isample = (int)new_sample;
+        iewma = iewma + ((isample - iewma) >> shift_factor);
+        ewma = (float)iewma;
+    }
+    return ewma;
+}
+```
+
+
+### Example 5: Nibble Lookup (Technique 27) — Population Count
+
+#### Original function
+
+```c
+static char bits[256];  /* 256-entry lookup table */
+
+int bitcount(unsigned long x) {
+    int cnt = 0;
+    cnt = bits[x & 0xFF] + bits[(x >> 8) & 0xFF] +
+          bits[(x >> 16) & 0xFF] + bits[(x >> 24) & 0xFF];
+    return cnt;
+}
+```
+
+#### Approximated function
+
+```c
+int bitcount(unsigned long x) {
+    /*Knob Variables Declaration Start*/
+    int nibble_stride = 1;
+    /*Knob Variables Declaration End*/
+
+    static const char nibble_lut[16] = {0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4};
+    int cnt = 0;
+    int nibbles_counted = 0;
+    for (int i = 0; i < 8; i += nibble_stride) {
+        cnt += nibble_lut[(x >> (i * 4)) & 0xF];
+        nibbles_counted++;
+    }
+    if (nibble_stride > 1) {
+        cnt = (cnt * 8 + nibbles_counted / 2) / nibbles_counted;
+    }
+    return cnt;
+}
+```
+
+
+### Example 6: Radix Variation (Technique 29) — Integer to String
+
+#### Original function
+
+```c
+void int_to_str(int value, char *buf) {
+    int i = 0;
+    char tmp[12];
+    if (value == 0) { buf[0] = '0'; buf[1] = '\0'; return; }
+    while (value > 0) {
+        tmp[i++] = '0' + (value % 10);
+        value = value / 10;
+    }
+    int j = 0;
+    while (i > 0) buf[j++] = tmp[--i];
+    buf[j] = '\0';
+}
+```
+
+#### Approximated function
+
+```c
+void int_to_str(int value, char *buf) {
+    /*Knob Variables Declaration Start*/
+    int radix_mode = 10;
+    int max_digits = 10;
+    /*Knob Variables Declaration End*/
+
+    int i = 0;
+    char tmp[12];
+    if (value == 0) { buf[0] = '0'; buf[1] = '\0'; return; }
+    while (value > 0 && i < max_digits) {
+        int digit;
+        if (radix_mode == 16) {
+            digit = value & 0xF;
+            value = value >> 4;
+        } else if (radix_mode == 8) {
+            digit = value & 0x7;
+            value = value >> 3;
+        } else {
+            digit = value % 10;
+            value = value / 10;
+        }
+        if (digit < 10) tmp[i++] = '0' + digit;
+        else tmp[i++] = 'a' + (digit - 10);
+    }
+    int j = 0;
+    while (i > 0) buf[j++] = tmp[--i];
+    buf[j] = '\0';
+}
+```
+
+
+### Example 7: Pattern Segmentation (Technique 30) — Array Thresholding
+
+#### Original function
+
+```c
+void threshold_array(int input[], int output[], int size, int thresh) {
+    for (int i = 0; i < size; i++) {
+        if (input[i] > thresh)
+            output[i] = 255;
+        else
+            output[i] = 0;
+    }
+}
+```
+
+#### Approximated function
+
+```c
+void threshold_array(int input[], int output[], int size, int thresh) {
+    /*Knob Variables Declaration Start*/
+    int segment_len = 1;
+    int change_threshold = 0;
+    /*Knob Variables Declaration End*/
+
+    int last_result = 0;
+    int last_anchor_val = input[0];
+    for (int i = 0; i < size; i++) {
+        if (segment_len <= 1 || (i % segment_len == 0) ||
+            (change_threshold > 0 && abs(input[i] - last_anchor_val) > change_threshold)) {
+            /* Compute at this representative point */
+            if (input[i] > thresh)
+                last_result = 255;
+            else
+                last_result = 0;
+            last_anchor_val = input[i];
+        }
+        output[i] = last_result;
+    }
+}
+```
+
+
+### Example 8: Lazy Preprocessing (Technique 25) — String Search Skip Table
+
+#### Original function
+
+```c
+void build_skip_table(char *pattern, int plen, int skip[256]) {
+    for (int i = 0; i < 256; i++)
+        skip[i] = plen;
+    for (int i = 0; i < plen - 1; i++)
+        skip[(unsigned char)pattern[i]] = plen - 1 - i;
+}
+```
+
+#### Approximated function
+
+```c
+void build_skip_table(char *pattern, int plen, int skip[256]) {
+    /*Knob Variables Declaration Start*/
+    int lazy_preprocess_enabled = 0;
+    int lazy_budget = 256;
+    /*Knob Variables Declaration End*/
+
+    if (lazy_preprocess_enabled == 0) {
+        /* Baseline: full table construction */
+        for (int i = 0; i < 256; i++)
+            skip[i] = plen;
+        for (int i = 0; i < plen - 1; i++)
+            skip[(unsigned char)pattern[i]] = plen - 1 - i;
+    } else {
+        /* Lazy: only initialize entries for pattern characters + budget */
+        for (int i = 0; i < 256; i++)
+            skip[i] = plen;
+        int budget = (lazy_budget < plen) ? lazy_budget : plen - 1;
+        for (int i = 0; i < budget; i++)
+            skip[(unsigned char)pattern[i]] = plen - 1 - i;
+    }
+}
+```
+
+### === AUTO-GENERATED FEW-SHOT START ===
+### Card-Generated Example 1: 4-Bit Quantization (Technique 31)
+
+**User request:** Apply 4-bit quantization to the pixel processing function.
+
+**Approximated code:**
+
+```c
+void process_pixels(unsigned char *data, int len) {
+    /*Knob Variables Declaration Start*/
+    int quantize_enabled = 0;
+    int shift_bits = 0;
+    /*Knob Variables Declaration End*/
+
+    for (int i = 0; i < len; i++) {
+        unsigned char val = data[i];
+        if (quantize_enabled) {
+            val = val >> shift_bits;
+        }
+        // ... rest of processing on val ...
+        data[i] = val;
+    }
+}
+```
+
+### Card-Generated Example 2: 4-bit Quantization for Sensor Data (Technique 32)
+
+**User request:** I have a temperature sensor that outputs 12-bit ADC values (0-4095) representing -40°C to +85°C. I need to reduce memory usage for storing temperature readings.
+
+**Approximated code:**
+
+```c
+// Original code
+uint16_t temp_readings[100];  // 200 bytes
+for(int i = 0; i < 100; i++) {
+    temp_readings[i] = read_temp_adc();  // 0-4095 range
+}
+
+// Approximated code with 4-bit quantization
+#define TEMP_MIN_ADC 0
+#define TEMP_MAX_ADC 4095
+uint8_t temp_readings_4bit[50];  // 50 bytes (2 readings per byte)
+
+void store_temp_4bit(int index, uint16_t adc_val) {
+    uint8_t quantized = (adc_val * 15) / TEMP_MAX_ADC;
+    if(index % 2 == 0) {
+        temp_readings_4bit[index/2] = (quantized << 4);
+    } else {
+        temp_readings_4bit[index/2] |= quantized;
+    }
+}
+
+uint16_t read_temp_4bit(int index) {
+    uint8_t quantized = (index % 2 == 0) ? 
+        (temp_readings_4bit[index/2] >> 4) : 
+        (temp_readings_4bit[index/2] & 0x0F);
+    return (quantized * TEMP_MAX_ADC) / 15;
+}
+```
+
+### === AUTO-GENERATED FEW-SHOT END ===

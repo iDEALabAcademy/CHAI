@@ -1,0 +1,8 @@
+{
+    "name": "MSP430",
+    "ram_kb": 10,
+    "has_fpu": false,
+    "has_simd": false,
+    "energy_budget_mj": 5,
+    "clock_mhz": 16
+}

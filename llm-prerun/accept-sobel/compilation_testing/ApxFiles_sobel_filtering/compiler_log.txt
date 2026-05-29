@@ -1,0 +1,1 @@
+gcc -DLOCAL_RUN -include limits.h -o main sobel.c

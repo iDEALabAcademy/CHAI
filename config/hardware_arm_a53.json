@@ -1,0 +1,8 @@
+{
+    "name": "ARM Cortex-A53",
+    "ram_kb": 512,
+    "has_fpu": true,
+    "has_simd": true,
+    "energy_budget_mj": 50,
+    "clock_mhz": 1200
+}

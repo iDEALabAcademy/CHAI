@@ -1,0 +1,150 @@
+/*
+ * segment-bm — Pattern Segmentation benchmark for CheckMate
+ *
+ * A loop over a slowly-varying / piecewise-constant input array,
+ * applying a weighted convolution-like scoring + thresholding on
+ * each element.  Adjacent elements are deliberately correlated so
+ * that segmented reuse is a valid approximation.
+ *
+ * Target function for approximation: score_array()
+ *   - Original: computes a weighted score for every element.
+ *   - Approximated: computes only at representative indices per
+ *     segment and fills the rest (Pattern Segmentation, Technique #30).
+ *
+ * Output: single unsigned hash of the output buffer, printed to stdout.
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+
+#ifndef LOCAL_RUN
+#include "support/msp430-support.h"
+#endif
+
+#define ARRAY_LEN 64
+#define NUM_ROUNDS 50
+
+/* ---- score_array: TARGET FUNCTION for approximation ---- */
+void score_array(const int *input, int *output, int n) {
+  /* Knob Variables Declaration Start */
+  int segment_len = 7;
+  int change_threshold = 50;
+  int policy = 1;
+  int fill_strategy = 0;
+  /* Knob Variables Declaration End */
+
+  /* APPROXIMATION TECHNIQUE #30: PATTERN SEGMENTATION
+   *
+   * Instead of computing the score for every element, we compute only
+   * at representative indices (every segment_len-th, or when change
+   * detector triggers) and fill intermediate slots using fill_strategy.
+   *
+   * Baseline: segment_len=1 and policy=0 => compute every element exactly.
+   */
+
+  int last_computed_val = 0;
+  int last_computed_idx = 0;
+  int next_computed_val = 0;
+  int have_next = 0;
+
+  for (int i = 0; i < n; i++) {
+    int do_compute = 0;
+
+    if (policy == 0) {
+      /* every_k: compute at multiples of segment_len */
+      if (i % segment_len == 0) do_compute = 1;
+    } else if (policy == 1) {
+      /* boundary_only: compute first and last of each segment */
+      int pos_in_seg = i % segment_len;
+      if (pos_in_seg == 0 || pos_in_seg == segment_len - 1) do_compute = 1;
+    } else {
+      /* change_triggered: recompute when input differs enough from last anchor */
+      int diff = input[i] - input[last_computed_idx];
+      if (diff < 0) diff = -diff;
+      if (i == 0 || diff > change_threshold) do_compute = 1;
+    }
+
+    if (do_compute) {
+      /* --- Heavy computation (the part we want to skip) --- */
+      int val = input[i];
+      int score = 0;
+      /* Weighted convolution-like scoring with neighbors */
+      if (i > 0) score += (input[i-1] * 3) >> 2;
+      score += (val * 5) >> 2;
+      if (i < n - 1) score += (input[i+1] * 3) >> 2;
+      /* Thresholding */
+      if (score < 0) score = 0;
+      if (score > 1000) score = 1000;
+
+      /* Store for fill logic */
+      if (have_next == 0) {
+        last_computed_val = score;
+        last_computed_idx = i;
+      } else {
+        last_computed_val = next_computed_val;
+        last_computed_idx = i;
+      }
+      next_computed_val = score;
+      have_next = 1;
+      output[i] = score;
+    } else {
+      /* --- Fill: reuse previous result --- */
+      if (fill_strategy == 0) {
+        /* hold_last: propagate most recent computed value */
+        output[i] = last_computed_val;
+      } else {
+        /* linear_interp: hold_last fallback in single-pass */
+        output[i] = last_computed_val;
+      }
+    }
+  }
+}
+
+/* ---- simple djb2-style hash over int array ---- */
+static unsigned int hash_array(const int *arr, int n) {
+  unsigned int h = 5381;
+  for (int i = 0; i < n; i++) {
+    h = ((h << 5) + h) + (unsigned int)arr[i];
+  }
+  return h;
+}
+
+/* ---- deterministic slowly-varying input generator ---- */
+static void generate_input(int *buf, int n, unsigned int seed) {
+  /* Piecewise-constant with small noise — ideal for segmentation */
+  int base = (int)(seed % 200);
+  for (int i = 0; i < n; i++) {
+    /* Change base every ~8 elements */
+    if (i > 0 && (i % 8) == 0) {
+      seed = seed * 1103515245u + 12345u;
+      base = (int)((seed >> 16) % 200);
+    }
+    /* Small noise: ±3 around base */
+    seed = seed * 1103515245u + 12345u;
+    int noise = (int)((seed >> 16) % 7) - 3;
+    buf[i] = base + noise;
+  }
+}
+
+#ifdef LOCAL_RUN
+int main() {
+#else
+void main() {
+#endif
+  int input[ARRAY_LEN];
+  int output[ARRAY_LEN];
+  unsigned int total_hash = 0;
+
+  for (int r = 0; r < NUM_ROUNDS; r++) {
+    generate_input(input, ARRAY_LEN, (unsigned int)(r * 17 + 7));
+    score_array(input, output, ARRAY_LEN);
+    total_hash ^= hash_array(output, ARRAY_LEN);
+  }
+
+#ifdef LOCAL_RUN
+  printf("%u\n", total_hash);
+  return 0;
+#else
+  indicate_end();
+#endif
+}

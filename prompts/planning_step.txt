@@ -1,0 +1,16 @@
+Now, let's move to the planning step. For the given function, {function_name}, what are the possible approximations that can be performed?
+
+If there exists a knob variable (a variable that, when changed, increases or decreases the level of approximations), state that it is a candidate.
+
+A point to note, this code is ment for {platform_architecture} architecture, space for large variables(like lookup table) is limited. Your suggest changes should be possiable within the architecture.
+
+# === AUTO-GENERATED START ===
+### Technique 31 — 4-Bit Quantization
+**When to use:** When the application processes integer data (sensor readings, pixel values, counters) where the full 8/16-bit range is not needed and moderate accuracy loss is acceptable.
+**When NOT to use:** When values require full dynamic range, when the application performs floating-point arithmetic, or when output precision is critical (e.g., cryptographic hashes, CRC checksums).
+
+### Technique 32 — 4-bit Quantization for Sensor Data
+**When to use:** Use when sensor data has sufficient dynamic range that 16 levels can capture meaningful variations, when memory is severely constrained, or when sensor noise already limits effective precision below 4 bits.
+**When NOT to use:** Avoid when the application requires high precision measurements, when sensor data is used for safety-critical decisions, or when the sensor's natural output already has low bit depth.
+
+# === AUTO-GENERATED END ===

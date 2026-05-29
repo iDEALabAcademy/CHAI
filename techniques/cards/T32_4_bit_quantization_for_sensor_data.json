@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.0",
+  "technique_id": 32,
+  "technique_tag": "T32",
+  "name": "4-bit Quantization for Sensor Data",
+  "category": "Data Quantization",
+  "description_llm": "Reduces sensor data precision from typical 8-16 bit values to 4 bits, significantly reducing memory usage and computation costs. Maps the full sensor range to 16 discrete levels using linear or non-linear quantization schemes. Particularly effective for sensor readings where high precision is not critical for the application's decision-making logic.",
+  "planning_guidance": {
+    "when_to_use": "Use when sensor data has sufficient dynamic range that 16 levels can capture meaningful variations, when memory is severely constrained, or when sensor noise already limits effective precision below 4 bits.",
+    "when_not_to_use": "Avoid when the application requires high precision measurements, when sensor data is used for safety-critical decisions, or when the sensor's natural output already has low bit depth.",
+    "implementation_rules": [
+      "Determine the expected min/max range of sensor values during calibration or profiling",
+      "Use linear quantization by default: quantized = (raw_value - min_val) * 15 / (max_val - min_val)",
+      "Store quantized values in packed format (2 values per byte) to maximize memory savings",
+      "Implement dequantization when full precision is needed: reconstructed = min_val + quantized * (max_val - min_val) / 15",
+      "Consider non-linear quantization (e.g., logarithmic) for sensors with wide dynamic ranges",
+      "Add bounds checking to handle sensor values outside the expected range"
+    ]
+  },
+  "few_shot_examples": [
+    {
+      "user_request": "I have a temperature sensor that outputs 12-bit ADC values (0-4095) representing -40\u00b0C to +85\u00b0C. I need to reduce memory usage for storing temperature readings.",
+      "expected_json_fields": {
+        "technique": "T32",
+        "energy_savings": "number",
+        "memory_savings": "number"
+      },
+      "assistant_response_example": "```c\n// Original code\nuint16_t temp_readings[100];  // 200 bytes\nfor(int i = 0; i < 100; i++) {\n    temp_readings[i] = read_temp_adc();  // 0-4095 range\n}\n\n// Approximated code with 4-bit quantization\n#define TEMP_MIN_ADC 0\n#define TEMP_MAX_ADC 4095\nuint8_t temp_readings_4bit[50];  // 50 bytes (2 readings per byte)\n\nvoid store_temp_4bit(int index, uint16_t adc_val) {\n    uint8_t quantized = (adc_val * 15) / TEMP_MAX_ADC;\n    if(index % 2 == 0) {\n        temp_readings_4bit[index/2] = (quantized << 4);\n    } else {\n        temp_readings_4bit[index/2] |= quantized;\n    }\n}\n\nuint16_t read_temp_4bit(int index) {\n    uint8_t quantized = (index % 2 == 0) ? \n        (temp_readings_4bit[index/2] >> 4) : \n        (temp_readings_4bit[index/2] & 0x0F);\n    return (quantized * TEMP_MAX_ADC) / 15;\n}\n```"
+    }
+  ],
+  "feasibility": {
+    "requires_fpu": false,
+    "requires_simd": false,
+    "memory_cost_kb": 0.1,
+    "applicable_apps": [
+      "environmental_monitoring",
+      "smart_agriculture",
+      "building_automation",
+      "wearable_devices"
+    ]
+  },
+  "cost_model": {
+    "compute_cost_relative": 0.2,
+    "memory_cost_kb": 0.1
+  }
+}

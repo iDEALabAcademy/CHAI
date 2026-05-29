@@ -1,0 +1,8 @@
+{
+    "name": "RISC-V RV32IMC",
+    "ram_kb": 64,
+    "has_fpu": false,
+    "has_simd": false,
+    "energy_budget_mj": 10,
+    "clock_mhz": 80
+}

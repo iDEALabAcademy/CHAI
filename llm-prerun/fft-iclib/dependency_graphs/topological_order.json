@@ -1,0 +1,8 @@
+[
+  "cos",
+  "sin",
+  "exp",
+  "cexp",
+  "fft_radix2",
+  "main"
+]

@@ -1,0 +1,13 @@
+[
+    {
+        "functionName": "btbl_bitcnt",
+        "completeFunction": "int btbl_bitcnt(uint32_t x) {\n  /* Knob Variables Declaration Start */\n  int nibble_stride = 1;\n  /* Knob Variables Declaration End */\n\n  /* 4-bit nibble lookup table: popcount for values 0..15 */\n  static const char nibble_lut[16] = {0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4};\n\n  int cnt = 0;\n  int nibble_idx;\n  int nibbles_counted = 0;\n\n  for (nibble_idx = 0; nibble_idx < 8; nibble_idx += nibble_stride) {\n    cnt += nibble_lut[(x >> (nibble_idx * 4)) & 0xF];\n    nibbles_counted++;\n  }\n\n  /* Scale estimate when nibbles were skipped */\n  if (nibble_stride > 1 && nibbles_counted > 0) {\n    cnt = (cnt * 8 + nibbles_counted / 2) / nibbles_counted;\n  }\n\n#ifdef LOCAL_RUN\n  {\n    static int _nlut_dbg = 0;\n    if (!_nlut_dbg) {\n      fprintf(stderr, \"[Nibble LUT] technique=27, nibble_stride=%d, nibbles_counted=%d/8, ops_saved=%d lookups\\n\",\n             nibble_stride, nibbles_counted, 8 - nibbles_counted);\n      /* Self-test: compare baseline popcount vs nibble LUT */\n      uint32_t test_vals[] = {0x0, 0xF, 0xFF, 0xFFFFFFFF, 0x12345678};\n      int num_tests = 5;\n      int t;\n      fprintf(stderr, \"[Nibble LUT Self-Test] stride=%d\\n\", nibble_stride);\n      fprintf(stderr, \"  %-12s %-10s %-10s\\n\", \"Input\", \"Baseline\", \"Approx\");\n      for (t = 0; t < num_tests; t++) {\n        uint32_t v = test_vals[t];\n        /* Reference: Brian Kernighan popcount */\n        int baseline = 0;\n        uint32_t tmp = v;\n        while (tmp) { baseline++; tmp &= (tmp - 1); }\n        /* Approximated nibble LUT */\n        int approx = 0;\n        int nc = 0;\n        int ni;\n        for (ni = 0; ni < 8; ni += nibble_stride) {\n          approx += nibble_lut[(v >> (ni * 4)) & 0xF];\n          nc++;\n        }\n        if (nibble_stride > 1 && nc > 0) {\n          approx = (approx * 8 + nc / 2) / nc;\n        }\n        fprintf(stderr, \"  0x%08X  %-10d %-10d\\n\", v, baseline, approx);\n      }\n      _nlut_dbg = 1;\n    }\n  }\n#endif\n\n  return cnt;\n}",
+        "knobVariables": "[\"nibble_stride\"]",
+        "knobRanges": "[{\"nibble_stride\": [1, 4]}]",
+        "knobStepSize": "[{\"nibble_stride\": \"Integer\"}]",
+        "filePath": "target/main.c",
+        "technique_number": 27,
+        "technique_name": "Nibble Lookup (Bitcount)",
+        "approximation_type": "Computation Simplification"
+    }
+]

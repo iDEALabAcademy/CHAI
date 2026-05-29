@@ -1,0 +1,10 @@
+[
+  {
+    "functionName": "calculateDeliveryRatio",
+    "completeFunction": "double calculateDeliveryRatio(PacketLog logs[], int size)\n{\n    /* Knob Variables Declaration Start */\n    int perforation_factor = 6;\n    int precision_mode = 1;\n    double truncation_ratio = 0.7748258590669662;\n    /* Knob Variables Declaration End */\n    \n    // Calculate truncated loop size based on truncation_ratio\n    int effective_size = (int)(size * truncation_ratio);\n    if (effective_size < 1) effective_size = 1; // Minimum 1 iteration\n    \n    #if defined(PRECISION_MODE) && PRECISION_MODE == 1\n        float total_packets = 0;\n        float delivered_weight = 0;\n    #else\n        double total_packets = 0;\n        double delivered_weight = 0;\n    #endif\n    \n    // Apply loop perforation with truncation strategy\n    int step = (perforation_factor > 1) ? perforation_factor : 1;\n    \n    for (int i = 0; i < effective_size; i += step)\n    {\n        total_packets += 1.0;\n        if (logs[i].status == 1)\n        {\n            delivered_weight += logs[i].weight;\n        }\n    }\n    \n    // Scale results to account for skipped packets due to perforation\n    if (perforation_factor > 1) {\n        total_packets *= perforation_factor;\n        delivered_weight *= perforation_factor;\n    }\n    \n    // Scale results to account for truncated portion of array\n    if (truncation_ratio < 1.0) {\n        double scale_factor = 1.0 / truncation_ratio;\n        total_packets *= scale_factor;\n        delivered_weight *= scale_factor;\n    }\n    \n    return (delivered_weight / total_packets);\n}",
+    "knobVariables": "['perforation_factor', 'precision_mode', 'truncation_ratio']",
+    "knobRanges": "[{'perforation_factor': [1, 8]}, {'precision_mode': [0, 1]}, {'truncation_ratio': [0.1, 1.0]}]",
+    "knobStepSize": "[{'perforation_factor': 'Integer'}, {'precision_mode': 'Integer'}, {'truncation_ratio': 'Real'}]",
+    "filePath": "target/main.c"
+  }
+]
