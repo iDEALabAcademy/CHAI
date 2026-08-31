@@ -86,6 +86,22 @@ def rank_techniques(
     return scored
 
 
+def select_by_opt_level(ranked_techniques, opt_level):
+    """
+    ranked_techniques: list sorted cheapest/lowest-cost first
+    opt_level: 0-3, higher = more techniques allowed through
+    """
+    n = len(ranked_techniques)
+    if n == 0:
+        return []
+
+    # proportion of the ranked list to expose at each level
+    fractions = {0: 0.25, 1: 0.50, 2: 0.75, 3: 1.0}
+    cutoff = max(1, int(n * fractions[opt_level]))
+
+    return ranked_techniques[:cutoff]
+
+
 def format_ranked_list(
     ranked: List[Tuple[int, str, float]],
 ) -> str:
@@ -97,3 +113,5 @@ def format_ranked_list(
     for rank, (tid, name, score) in enumerate(ranked, start=1):
         lines.append(f"  {rank:>4}  {tid:>2}  {name:<35s} {score:.4f}")
     return "\n".join(lines)
+    
+    

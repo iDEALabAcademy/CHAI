@@ -21,29 +21,43 @@ cur_call = 0
 # progress_bar = tqdm(total=n_calls, desc="Bayesian Optimization Iteration")
 
 def createSearchSpace(pathToJson):
-
     with open(pathToJson, "r") as file:
         json_content = file.read()
-
     # Parse the JSON content
     approximation_data = json.loads(json_content)
-
     space = []
     for approximation_dict in approximation_data:
         raw_ranges = approximation_dict["knobRanges"]
         knob_ranges = ast.literal_eval(raw_ranges) if isinstance(raw_ranges, str) else raw_ranges
         raw_steps = approximation_dict["knobStepSize"]
         knob_step_size = ast.literal_eval(raw_steps) if isinstance(raw_steps, str) else raw_steps
-
         for i, knob_range in enumerate(knob_ranges):
             for knob_name, range_values in knob_range.items():
-                if knob_step_size[i][knob_name] == "Integer":
-                    space.append(
-                        Integer(range_values[0], range_values[1], name=knob_name)
-                    )
-                if knob_step_size[i][knob_name] == "Real":
-                    space.append(Real(range_values[0], range_values[1], name=knob_name))
+                # Defensive coercion: knobRanges can arrive as a native JSON
+                # array with numeric values quoted as strings (independent of
+                # the ast.literal_eval branch above, which only fires when the
+                # whole knobRanges field itself was serialized as a string).
+                try:
+                    low, high = int(range_values[0]), int(range_values[1])
+                except (TypeError, ValueError):
+                    raise ValueError(
+                        f"[createSearchSpace] Non-numeric knob range for "
+                        f"'{knob_name}' in {pathToJson}: {range_values!r} "
+                        f"(types: {type(range_values[0]).__name__}, "
+                        f"{type(range_values[1]).__name__})"
+                    ) from None
 
+                if high <= low:
+                    raise ValueError(
+                        f"[createSearchSpace] Degenerate knob range for "
+                        f"'{knob_name}' in {pathToJson}: low={low}, high={high}"
+                    )
+
+                if knob_step_size[i][knob_name] == "Integer":
+                    space.append(Integer(low, high, name=knob_name))
+                if knob_step_size[i][knob_name] == "Real":
+                    # Real-valued knobs should stay float — don't force int here
+                    space.append(Real(float(range_values[0]), float(range_values[1]), name=knob_name))
     return space
 
 

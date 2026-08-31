@@ -33,6 +33,14 @@ def generateGroundTruth(appName):
         cmd = f"./main && mv img.pgm out.pgm"
         subprocess.run(cmd, shell=True)
 
+    elif appName == "sobel-esp":
+        # Make clean and make main
+        subprocess.run("make clean", shell=True, stdout=subprocess.DEVNULL)
+        subprocess.run("make main", shell=True, stdout=subprocess.DEVNULL)
+
+        cmd = f"./main && mv img.pgm out.pgm"
+        subprocess.run(cmd, shell=True)
+
     elif appName == "accept-sobel":
         # Make clean and make main
         subprocess.run("make clean", shell=True, stdout=subprocess.DEVNULL)

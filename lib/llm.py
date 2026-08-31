@@ -303,7 +303,7 @@ def planStepFunction(
         except Exception as error:
             plan_retries += 1
             print(f"[planning] Retry {plan_retries}/{MAX_PLAN_RETRIES} for {this_function}: {error}")
-            import gc; gc.collect(); torch.cuda.empty_cache()
+            import gc; gc.collect()
             if plan_retries >= MAX_PLAN_RETRIES:
                 print(Fore.RED + f"  [planning] {this_function} failed after {MAX_PLAN_RETRIES} attempts." + Style.RESET_ALL)
                 break
@@ -375,7 +375,7 @@ def approximateFunction(
         except Exception as error:
             approx_retries += 1
             print(f"[approximateFunction] Retry {approx_retries}/{MAX_APPROX_RETRIES} for {this_function}: {error}")
-            import gc; gc.collect(); torch.cuda.empty_cache()
+            import gc; gc.collect()
             if approx_retries >= MAX_APPROX_RETRIES:
                 print(Fore.RED + f"  [approximateFunction] {this_function} failed after {MAX_APPROX_RETRIES} attempts — skipping." + Style.RESET_ALL)
                 break
@@ -909,3 +909,109 @@ def invokeLLM(input, invoking_obj):
         return None
     
     return output.content
+    
+    
+def findApplicableTechniquesForFunction(
+        this_function,
+        this_context,
+        feasible_techniques,
+        techniqueSelectionPrompt
+    ):
+    """
+    Ask the LLM which of the hardware-feasible techniques are plausible
+    candidates for THIS specific function (not the whole app). Mirrors
+    purposeIdentificationFunction's calling convention exactly.
+
+    Parameters
+    ----------
+    this_function : str
+    this_context : list  (conversation so far — e.g. purpose ID convo)
+    feasible_techniques : dict[int, TechniqueEntry]
+        The app-wide hardware-feasible set (already filtered for
+        FPU/SIMD/RAM). This function narrows it further, it does not
+        re-check hardware feasibility.
+    techniqueSelectionPrompt : str
+        Template with {context}, {function_name}, {function_code},
+        {feasible_techniques} placeholders (same style as purposePrompt).
+
+    Returns
+    -------
+    this_tech_select_convo : list
+        [human_msg, ai_msg] to append to this_context / CHAT_HISTORY.
+    candidate_ids : set[int]
+        Subset of feasible_techniques.keys() the LLM judged applicable.
+        Falls back to the FULL feasible_techniques key set if parsing
+        fails or the LLM returns nothing usable (fail-open, matches the
+        existing hw_validator fallback philosophy of never silently
+        producing an empty prompt).
+    """
+    from lib.constraint_gatekeeper import format_feasible_list
+    from lib.hw_validator import extract_technique_ids_from_text
+
+    global PRINT_LLM_CONVO
+
+    chain = llmLangChain
+    function_data = getFunctionData(ENTITIES, this_function)['completeFunction']
+    feasible_list_text = format_feasible_list(feasible_techniques)
+
+    def get_human_prompt_tech_select():
+        common_prompt = {
+            'function_name': this_function,
+            'function_code': function_data,
+            'feasible_techniques': feasible_list_text,
+        }
+        context_prompt = techniqueSelectionPrompt.format(context=this_context, **common_prompt)
+        no_context_prompt = techniqueSelectionPrompt.format(**common_prompt)
+        return context_prompt, no_context_prompt
+
+    def log_conversation(human_prompt):
+        if PRINT_LLM_CONVO:
+            print(f"\n\n ---------------------- Technique Selection Prompt ---------------------- \n\n{human_prompt}\n\n")
+
+    output_tech_select = ""
+    MAX_TECH_SELECT_RETRIES = 5
+    tech_select_retries = 0
+
+    while True:
+        try:
+            human_prompt_tech_select, no_context_human_prompt = get_human_prompt_tech_select()
+            log_conversation(human_prompt_tech_select)
+
+            output_tech_select = chain.invoke(input=human_prompt_tech_select)
+
+            if PRINT_LLM_CONVO:
+                print(Fore.CYAN + str(output_tech_select.content))
+                print(Style.RESET_ALL)
+
+            break
+        except Exception as error:
+            tech_select_retries += 1
+            print(f"[techSelect] Retry {tech_select_retries}/{MAX_TECH_SELECT_RETRIES} for {this_function}: {error}")
+            if tech_select_retries >= MAX_TECH_SELECT_RETRIES:
+                print(Fore.RED + f"  [techSelect] {this_function} failed after {MAX_TECH_SELECT_RETRIES} attempts — "
+                      f"falling back to full feasible set." + Style.RESET_ALL)
+                break
+            if PRINT_LLM_CONVO:
+                print(Fore.RED + str(output_tech_select))
+                print(Style.RESET_ALL)
+
+    response_text = output_tech_select.content if hasattr(output_tech_select, 'content') else str(output_tech_select)
+
+    candidate_ids = extract_technique_ids_from_text(response_text) if response_text else set()
+    # Guard: LLM must only pick from what's actually hardware-feasible;
+    # anything else it names gets dropped, not trusted.
+    candidate_ids = candidate_ids & set(feasible_techniques.keys())
+
+    # Fail-open: if the LLM gave nothing usable, don't silently hand the
+    # rest of the pipeline an empty technique set — fall back to the full
+    # app-wide feasible set for this function instead.
+    if not candidate_ids:
+        print(Fore.YELLOW + f"  [techSelect] {this_function}: no valid candidates parsed — "
+              f"falling back to full feasible set ({len(feasible_techniques)})." + Style.RESET_ALL)
+        candidate_ids = set(feasible_techniques.keys())
+
+    this_tech_select_convo = [
+        formatMessageForHistory(no_context_human_prompt, False),
+        formatMessageForHistory(response_text, True)
+    ]
+    return this_tech_select_convo, candidate_ids

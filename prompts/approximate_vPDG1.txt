@@ -15,7 +15,7 @@ If you are applying loop perforation, consider **truncation and not reduced samp
   - Use ONLY integer right-shift (>>) for quantization — never floating-point division.
   - Declare quantize_enabled and shift_bits as knob variables inside /*Knob Variables Declaration Start/End*/ block.
   - When quantize_enabled==0, the function MUST produce bit-identical output to the original.
-  - Guard the quantization with: if (quantize_enabled) { val = val >> shift_bits; }
+  - Guard the quantization with: if (quantize_enabled) {{ val = val >> shift_bits; }}
   - Do NOT use lookup tables — this technique saves memory, not just cycles.
   - Ensure the shift does not exceed the variable's bit width (e.g., max 4 for uint8_t).
 

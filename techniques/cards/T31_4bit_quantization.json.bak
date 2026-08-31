@@ -1,0 +1,40 @@
+{
+  "schema_version": "1.0",
+  "technique_id": 31,
+  "technique_tag": "T31",
+  "name": "4-Bit Quantization",
+  "category": "Precision Reduction",
+  "description_llm": "4-bit quantization (nibble quantization): Reduces integer variable precision from 8/16/32 bits to 4 bits by masking or right-shifting values, storing two quantized values per byte. Trades numerical range and precision for reduced memory footprint and faster integer arithmetic. Applicable to sensor data processing, image pixel values, and feature vectors where full precision is unnecessary. Knobs: quantize_enabled [0,1], shift_bits [0,4] where 0=no quantization (baseline), 4=maximum quantization to 4 bits.",
+  "planning_guidance": {
+    "when_to_use": "When the application processes integer data (sensor readings, pixel values, counters) where the full 8/16-bit range is not needed and moderate accuracy loss is acceptable.",
+    "when_not_to_use": "When values require full dynamic range, when the application performs floating-point arithmetic, or when output precision is critical (e.g., cryptographic hashes, CRC checksums).",
+    "implementation_rules": [
+      "Use ONLY integer right-shift (>>) for quantization — never floating-point division.",
+      "Declare quantize_enabled and shift_bits as knob variables inside /*Knob Variables Declaration Start/End*/ block.",
+      "When quantize_enabled==0, the function MUST produce bit-identical output to the original.",
+      "Guard the quantization with: if (quantize_enabled) { val = val >> shift_bits; }",
+      "Do NOT use lookup tables — this technique saves memory, not just cycles.",
+      "Ensure the shift does not exceed the variable's bit width (e.g., max 4 for uint8_t)."
+    ]
+  },
+  "few_shot_examples": [
+    {
+      "user_request": "Apply 4-bit quantization to the pixel processing function.",
+      "expected_json_fields": {
+        "knobVariables": "['quantize_enabled', 'shift_bits']",
+        "knobRanges": "[{'quantize_enabled': [0, 1]}, {'shift_bits': [0, 4]}]"
+      },
+      "assistant_response_example": "```c\nvoid process_pixels(unsigned char *data, int len) {\n    /*Knob Variables Declaration Start*/\n    int quantize_enabled = 0;\n    int shift_bits = 0;\n    /*Knob Variables Declaration End*/\n\n    for (int i = 0; i < len; i++) {\n        unsigned char val = data[i];\n        if (quantize_enabled) {\n            val = val >> shift_bits;\n        }\n        // ... rest of processing on val ...\n        data[i] = val;\n    }\n}\n```"
+    }
+  ],
+  "feasibility": {
+    "requires_fpu": false,
+    "requires_simd": false,
+    "memory_cost_kb": 0.0,
+    "applicable_apps": null
+  },
+  "cost_model": {
+    "compute_cost_relative": 0.15,
+    "memory_cost_kb": 0.0
+  }
+}

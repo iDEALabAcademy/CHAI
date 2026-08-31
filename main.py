@@ -175,6 +175,13 @@ parser.add_argument("--hardware_profile", type=str, default=None,
                     help="Alias for --hardware. Path to a hardware profile JSON.")
 parser.add_argument("--trace", type=str, default=None,
                     help="Override traces list with a single trace path (e.g. ../traces/RF_1.csv)")
+parser.add_argument("--opt_level", type=int, choices=[0, 1, 2, 3], default=3,
+                    help="Drops the N cheapest-ranked feasible techniques from the pool "
+                         "exposed to the LLM, where N = 3 - opt_level "
+                         "(level 3 drops 0 / keeps all, level 2 drops the top 1 cheapest, "
+                         "level 1 drops the top 2 cheapest, level 0 drops the top 3 cheapest). "
+                         "Applied ONCE for the whole app — every function in this "
+                         "run is exposed to the same technique pool.")
 
 args = parser.parse_args()
 
@@ -216,9 +223,9 @@ if args.no_llm:
 # ---------------------------------------------------------------------------
 hw_profile = None          # None → legacy behaviour (no filtering)
 hw_constraint_text = ""    # injected into LLM prompts when non-empty
-hw_feasible = None         # dict[int, TechniqueEntry]  |  None
-hw_ranked = None           # sorted list of (id, name, cost)  |  None
-hw_rejection_log = []      # human-readable rejection lines
+hw_feasible = None         # dict[int, TechniqueEntry]  |  None  (app-wide, post opt_level slice)
+hw_ranked = None           # sorted list of (id, name, cost)  |  None  (app-wide, post opt_level slice)
+hw_rejection_log = []      # human-readable rejection lines (app-level, for startup printout)
 hw_llm_raw_responses = []  # collected raw LLM planning/approx outputs
 hw_validated_ids = set()   # final validated technique IDs
 hw_invalid_ids = set()     # IDs rejected by post-LLM validator
@@ -234,6 +241,7 @@ exp_hw_reprompts = 0       # HW validator reprompts
 exp_technique_clamped = 0  # techniques force-removed post-LLM
 exp_functions_attempted = 0
 exp_functions_succeeded = 0
+
 
 if args.hardware:
     from lib.hardware_profile import load_hardware_profile
@@ -258,12 +266,35 @@ if args.hardware:
     # Compact startup line (Task A.4)
     print(hw_profile.startup_line())
 
-    # The app name is already known at this point
+    # App-wide feasible set (hardware + applicable_apps filtering).
     hw_feasible, hw_rejection_log = filter_feasible_techniques(app_name, hw_profile)
-    hw_ranked = rank_techniques(hw_feasible, hw_profile)
 
-    # Build the constraint text that will be prepended to LLM prompts
+    # Keep the FULL app-level feasible set around for observability / final
+    # clamp step, since hw_feasible itself gets overwritten below by the
+    # opt_level-sliced version that every function will actually use.
+    hw_feasible_full = hw_feasible
+
+    # Full ranking, shown once for visibility/debugging.
+    hw_ranked_full = rank_techniques(hw_feasible_full, hw_profile)
+
+    # ---- Apply opt_level slicing ONCE, app-wide ----
+    # Drop the N cheapest-ranked techniques from the top of the list, where
+    # N = 3 - opt_level. Level 3 drops 0 (keeps all), level 2 drops the
+    # single cheapest, level 1 drops the top 2 cheapest, level 0 drops the
+    # top 3 cheapest. Whatever remains (the more expensive tail) is what's
+    # exposed to the LLM. Every function processed in this run is exposed
+    # to this exact same set — there is no per-function differentiation,
+    # since the technique registry only tags techniques by applicable_apps
+    # (app-wide), not by individual function name.
+    dropped = 3 - args.opt_level
+    hw_ranked = hw_ranked_full[dropped:]
+    hw_feasible = {tid: hw_feasible_full[tid] for tid, _, _ in hw_ranked}
     hw_constraint_text = format_feasible_list(hw_feasible)
+
+    print(f"  [OPT] Hardware feasible set size (app-wide): {len(hw_feasible_full)} "
+          f"→ opt_level={args.opt_level} → dropped top {dropped} cheapest → "
+          f"{len(hw_feasible)}/{len(hw_feasible_full)} techniques exposed to "
+          f"the LLM for every function in {app_name}")
 
     # ---- Terminal output ----
     print(Back.CYAN + Fore.BLACK)
@@ -274,19 +305,25 @@ if args.hardware:
     print(f"  Target : {hw_profile.summary()}")
     print(f"  App    : {app_name}")
     print()
-    print(Fore.GREEN + "  Feasible techniques:" + Style.RESET_ALL)
+    print(Fore.GREEN + "  Full app-wide feasible ranking (debug):" + Style.RESET_ALL)
+    print(format_ranked_list(hw_ranked_full))
+    print()
+    print(Fore.GREEN + f"  Opt-level {args.opt_level} slice — dropped top {dropped} cheapest (used for every function):" + Style.RESET_ALL)
     print(format_ranked_list(hw_ranked))
     print()
     if hw_rejection_log:
-        print(Fore.RED + "  Rejected techniques:" + Style.RESET_ALL)
+        print(Fore.RED + "  Rejected techniques (app-wide):" + Style.RESET_ALL)
         print(format_rejection_report(hw_rejection_log))
         print()
     print("-" * 60)
     print()
 
     # ---- Write observability: rejection JSON (Task D.2) ----
-    rej_path = write_rejection_json(app_name, hw_profile, hw_feasible, hw_rejection_log)
+    rej_path = write_rejection_json(app_name, hw_profile, hw_feasible_full, hw_rejection_log)
     print(f"  → Rejection log: {rej_path}")
+else:
+    hw_feasible_full = None
+    hw_ranked_full = None
 
 copyFiles(f"benchmark_applications/{app_name}/",f"eval-apps/{app_name}/")
 
@@ -393,6 +430,20 @@ if not alreadyRun:
         this_context = manufacturerContext(PDG, this_function)
         Dprint("\n\n\n\n --- start \n\n")
         Dprint(this_context)
+
+        """
+            Step 0.5: Hardware-aware technique constraint text
+
+            hw_feasible / hw_constraint_text were computed ONCE, app-wide,
+            before this loop started (opt_level applied against the full
+            app-level feasible set). Every function sees the exact same
+            technique set here — there is no per-function narrowing,
+            since the technique registry only tags techniques by
+            applicable_apps (app-wide), not by individual function name.
+        """
+        if hw_feasible_full is not None:
+            print(f"  [OPT] {this_function}: {len(hw_feasible)}/{len(hw_feasible_full)} "
+                  f"techniques exposed to LLM (opt_level={args.opt_level})")
 
         """
             Step 1: Identify this_function's purpose
@@ -555,15 +606,19 @@ print(Style.RESET_ALL)
 # ---------------------------------------------------------------------------
 #  Post-LLM: final clamp + observability (Tasks C.2 / D.1)
 # ---------------------------------------------------------------------------
-if hw_feasible is not None:
-    # Clamp apx_all.json — remove any infeasible entries that survived
+if hw_feasible_full is not None:
+    # Clamp apx_all.json — remove any infeasible entries that survived.
+    # Use the FULL app-level feasible set here: a technique chosen under
+    # the opt_level slice is still globally feasible hardware-wise, so
+    # clamping must check against hw_feasible_full, not the sliced
+    # hw_feasible.
     apx_path = "approximated_functions/apx_all.json"
     if os.path.exists(apx_path):
         # Also pick up technique_number from JSON
         json_ids = extract_technique_ids_from_json(apx_path)
-        _, json_invalid = validate_technique_ids(json_ids, hw_feasible)
+        _, json_invalid = validate_technique_ids(json_ids, hw_feasible_full)
         hw_invalid_ids |= json_invalid
-        hw_clamped_ids = clamp_apx_json(apx_path, hw_feasible)
+        hw_clamped_ids = clamp_apx_json(apx_path, hw_feasible_full)
         if hw_clamped_ids:
             print(Fore.RED + f"  [HW Validator] Clamped infeasible technique(s) "
                   f"from apx_all.json: {hw_clamped_ids}" + Style.RESET_ALL)
@@ -571,7 +626,7 @@ if hw_feasible is not None:
     # Write constraints proof TXT (Task D.1)
     raw_resp = "\n---\n".join(hw_llm_raw_responses) if hw_llm_raw_responses else ""
     con_path = write_constraints_txt(
-        app_name, hw_profile, hw_feasible, hw_ranked,
+        app_name, hw_profile, hw_feasible_full, hw_ranked_full,
         llm_raw_response=raw_resp,
         validated_ids=hw_validated_ids or None,
         invalid_ids=hw_invalid_ids or None,
@@ -598,8 +653,8 @@ if not alreadyRun:
     print(f"  Compile retries/func  : {exp_compile_retries_per_func}")
     print(f"  HW reprompts triggered: {exp_hw_reprompts}")
     print(f"  Techniques clamped    : {exp_technique_clamped}")
-    if hw_feasible is not None:
-        print(f"  Feasible techniques   : {len(hw_feasible)}")
+    if hw_feasible_full is not None:
+        print(f"  Feasible techniques   : {len(hw_feasible_full)}")
         print(f"  Rejected techniques   : {len(hw_rejection_log)}")
         print(f"  Invalid IDs caught    : {sorted(hw_invalid_ids) if hw_invalid_ids else 'None'}")
         print(f"  Validated IDs         : {sorted(hw_validated_ids) if hw_validated_ids else 'None'}")
@@ -610,6 +665,7 @@ if not alreadyRun:
     metrics = {
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         "app": app_name,
+        "opt_level": args.opt_level,
         "hardware_profile": hw_profile.name if hw_profile else "None",
         "hardware_aware": bool(hw_profile),
         "functions_attempted": exp_functions_attempted,
@@ -619,7 +675,7 @@ if not alreadyRun:
         "compile_retries_per_func": exp_compile_retries_per_func,
         "hw_reprompts": exp_hw_reprompts,
         "techniques_clamped": exp_technique_clamped,
-        "feasible_techniques": len(hw_feasible) if hw_feasible else None,
+        "feasible_techniques": len(hw_feasible_full) if hw_feasible_full else None,
         "rejected_techniques": len(hw_rejection_log) if hw_rejection_log else 0,
         "invalid_ids": sorted(hw_invalid_ids) if hw_invalid_ids else [],
         "validated_ids": sorted(hw_validated_ids) if hw_validated_ids else [],
@@ -980,5 +1036,16 @@ def _post_run_cleanup():
             os.remove(stale)
 
     print("[cleanup] Post-run cleanup complete — workspace ready for next run.")
+
+# ---------------------------------------------------------------------------
+#  Archive tuned result before cleanup wipes it
+# ---------------------------------------------------------------------------
+import datetime as _dt
+if os.path.isdir("knob_tuning"):
+    _ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    _archive_dir = f"results_archive/{app_name}_{_ts}"
+    os.makedirs("results_archive", exist_ok=True)
+    shutil.copytree("knob_tuning", _archive_dir)
+    print(f"[archive] Saved tuned result to {_archive_dir}/")
 
 _post_run_cleanup()

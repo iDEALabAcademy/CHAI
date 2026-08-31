@@ -32,7 +32,7 @@ def buildObjects(appName):
     # build the appName using cmake
     try:
         result = subprocess.run(
-            f"cmake .. -DTARGET_ARCH=msp430 && make {appName}-MS-msp430",
+            f"cmake .. -DTARGET_ARCH=msp430 -DCMAKE_POLICY_VERSION_MINIMUM=3.5 && make {appName}-MS-msp430",
             shell=True,
             capture_output=True,
             text=True,

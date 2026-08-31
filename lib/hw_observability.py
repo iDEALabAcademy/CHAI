@@ -52,14 +52,52 @@ def _build_rejection_reason(tech: TechniqueEntry, hw: HardwareProfile) -> Option
     return "; ".join(reasons) if reasons else None
 
 
+def _print_rejections_terminal(
+    app_name: str,
+    hw: HardwareProfile,
+    entries: List[dict],
+    feasible_count: int,
+) -> None:
+    """Print a readable rejected-technique table to the terminal."""
+    print()
+    print("=" * 78)
+    print(f"  REJECTED / INFEASIBLE TECHNIQUES — app={app_name}  hardware={hw.name}")
+    print("=" * 78)
+
+    if not entries:
+        print("  (none — every registered technique was feasible)")
+        print("=" * 78)
+        print()
+        return
+
+    id_w, name_w = 4, 30
+    print(f"  {'ID':<{id_w}} {'Technique':<{name_w}} Reason")
+    print("  " + "-" * 74)
+    for e in entries:
+        tid = str(e["technique_id"])
+        name = str(e["technique_name"])[:name_w]
+        reason = e["reason"]
+        print(f"  {tid:<{id_w}} {name:<{name_w}} {reason}")
+
+    print("  " + "-" * 74)
+    print(f"  Feasible: {feasible_count}   Rejected: {len(entries)}   "
+          f"Total registered: {feasible_count + len(entries)}")
+    print("=" * 78)
+    print()
+
+
 def write_rejection_json(
     app_name: str,
     hw: HardwareProfile,
     feasible: Dict[int, TechniqueEntry],
     rejection_log: List[str],
+    print_to_terminal: bool = True,
 ) -> str:
     """
     Write ``outputs/hardware_rejections_<app>_<hwname>.json``.
+
+    If *print_to_terminal* is True (default), also prints a rejected-technique
+    table with reasons to stdout before writing the file.
 
     Returns the path written.
     """
@@ -90,6 +128,9 @@ def write_rejection_json(
             "reason": "; ".join(reason_parts),
         })
 
+    if print_to_terminal:
+        _print_rejections_terminal(app_name, hw, entries, feasible_count=len(feasible))
+
     safe_hw = hw.name.replace(" ", "_").replace("/", "_")
     path = os.path.join(_OUTPUTS_DIR,
                         f"hardware_rejections_{app_name}_{safe_hw}.json")
@@ -105,6 +146,9 @@ def write_rejection_json(
     }
     with open(path, "w") as f:
         json.dump(payload, f, indent=2)
+
+    if print_to_terminal:
+        print(f"[hw_observability] Rejection report saved to: {path}\n")
 
     return path
 

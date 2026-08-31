@@ -1,0 +1,8 @@
+{
+    "name": "ESP32-WROOM",
+    "ram_kb": 520,
+    "has_fpu": true,
+    "has_simd": false,
+    "energy_budget_mj": 5,
+    "clock_mhz": 240
+}
